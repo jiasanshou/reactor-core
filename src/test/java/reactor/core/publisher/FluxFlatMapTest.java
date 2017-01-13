@@ -495,7 +495,7 @@ public class FluxFlatMapTest {
 	public void prematureMapCallableNullComplete() {
 		StepVerifier.create(Mono.just(1)
 		                        .flatMap(f -> Mono.fromCallable(() -> null)))
-		            .verifyErrorMessage("test");
+		            .verifyComplete();
 	}
 
 	@Test
