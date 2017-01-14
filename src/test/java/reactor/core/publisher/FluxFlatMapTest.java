@@ -26,7 +26,6 @@ import org.junit.Test;
 import org.reactivestreams.Subscriber;
 import reactor.core.Exceptions;
 import reactor.test.StepVerifier;
-import reactor.test.publisher.TestPublisher;
 import reactor.test.subscriber.AssertSubscriber;
 import reactor.util.concurrent.QueueSupplier;
 
@@ -468,6 +467,22 @@ public class FluxFlatMapTest {
 	}
 
 	@Test
+	public void failCallable() {
+		StepVerifier.create(Flux.just(1, 2, 3)
+		                        .flatMap(d -> Mono.fromCallable(() -> {
+			                        throw new Exception("test");
+		                        })))
+		            .verifyErrorMessage("test");
+	}
+
+	@Test
+	public void failNull() {
+		StepVerifier.create(Flux.just(1, 2, 3)
+		                        .flatMap(d -> null))
+		            .verifyError(NullPointerException.class);
+	}
+
+	@Test
 	public void failScalarMap() {
 		StepVerifier.create(Mono.just(1)
 		                        .flatMap(f -> {
@@ -545,42 +560,22 @@ public class FluxFlatMapTest {
 
 	@Test //FIXME use Violation.NO_CLEANUP_ON_TERMINATE
 	public void ignoreDoubleComplete() {
-		StepVerifier.create(Flux.zip(obj -> 0, Flux.just(1), Flux.never(), s -> {
+		StepVerifier.create(Flux.from(s -> {
 			s.onSubscribe(Operators.emptySubscription());
 			s.onComplete();
 			s.onComplete();
-		}))
+		}).flatMap(Flux::just))
 		            .verifyComplete();
 	}
 
 	@Test //FIXME use Violation.NO_CLEANUP_ON_TERMINATE
 	public void failDoubleError() {
 		try {
-			StepVerifier.create(Flux.zip(obj -> 0, Flux.just(1), Flux.never(), s -> {
+			StepVerifier.create(Flux.from(s -> {
 				s.onSubscribe(Operators.emptySubscription());
 				s.onError(new Exception("test"));
 				s.onError(new Exception("test2"));
-			}))
-			            .verifyErrorMessage("test");
-			Assert.fail();
-		}
-		catch (Exception e) {
-			assertThat(Exceptions.unwrap(e)).hasMessage("test2");
-		}
-	}
-
-	@Test //FIXME use Violation.NO_CLEANUP_ON_TERMINATE
-	public void failDoubleError3() {
-		try {
-			StepVerifier.create(Flux.zip(obj -> 0,
-					Flux.just(1)
-					    .hide(),
-					Flux.never(),
-					s -> {
-						s.onSubscribe(Operators.emptySubscription());
-						s.onError(new Exception("test"));
-						s.onError(new Exception("test2"));
-					}))
+			}).flatMap(Flux::just))
 			            .verifyErrorMessage("test");
 			Assert.fail();
 		}
@@ -592,210 +587,15 @@ public class FluxFlatMapTest {
 	@Test //FIXME use Violation.NO_CLEANUP_ON_TERMINATE
 	public void failDoubleErrorSilent() {
 		Hooks.onErrorDropped(e -> {
+			assertThat(e).hasMessage("test2");
 		});
-		StepVerifier.create(Flux.zip(obj -> 0, Flux.just(1), Flux.never(), s -> {
+		StepVerifier.create(Flux.from(s -> {
 			s.onSubscribe(Operators.emptySubscription());
 			s.onError(new Exception("test"));
 			s.onError(new Exception("test2"));
-		}))
+		}).flatMap(Flux::just))
 		            .verifyErrorMessage("test");
 		Hooks.resetOnErrorDropped();
-	}
-
-	@Test //FIXME use Violation.NO_CLEANUP_ON_TERMINATE
-	public void failDoubleErrorHide() {
-		try {
-			StepVerifier.create(Flux.zip(obj -> 0,
-					Flux.just(1)
-					    .hide(),
-					Flux.never(),
-					s -> {
-						s.onSubscribe(Operators.emptySubscription());
-						s.onError(new Exception("test"));
-						s.onError(new Exception("test2"));
-					}))
-			            .verifyErrorMessage("test");
-			Assert.fail();
-		}
-		catch (Exception e) {
-			assertThat(Exceptions.unwrap(e)).hasMessage("test2");
-		}
-	}
-
-	@Test
-	public void failDoubleTerminalPublisher() {
-		DirectProcessor<Integer> d1 = DirectProcessor.create();
-		Hooks.onErrorDropped(e -> {
-		});
-		try {
-			StepVerifier.create(Flux.zip(obj -> 0, Flux.just(1), d1, s -> {
-				Subscriber<?> a =
-						((DirectProcessor.DirectProcessorSubscription) d1.downstreams()
-						                                                 .next()).actual;
-
-				s.onSubscribe(Operators.emptySubscription());
-				s.onComplete();
-				a.onError(new Exception("test"));
-			}))
-			            .verifyComplete();
-		}
-		finally {
-			Hooks.resetOnErrorDropped();
-		}
-	}
-
-	@Test //FIXME use Violation.NO_CLEANUP_ON_TERMINATE
-	public void failDoubleError2() {
-		try {
-			StepVerifier.create(Flux.zip(obj -> 0,
-					Flux.just(1)
-					    .hide(),
-					Flux.never(),
-					s -> {
-						s.onSubscribe(Operators.emptySubscription());
-						s.onError(new Exception("test"));
-						s.onError(new Exception("test2"));
-					}))
-			            .verifyErrorMessage("test");
-			Assert.fail();
-		}
-		catch (Exception e) {
-			assertThat(Exceptions.unwrap(e)).hasMessage("test2");
-		}
-	}
-
-	@Test
-	public void failNull() {
-		StepVerifier.create(Flux.zip(obj -> 0, Flux.just(1), null))
-		            .verifyError(NullPointerException.class);
-	}
-
-	@Test
-	public void failCombinedNull() {
-		StepVerifier.create(Flux.zip(obj -> null, Flux.just(1), Flux.just(2)))
-		            .verifyError(NullPointerException.class);
-	}
-
-	@Test
-	public void failCombinedNullHide() {
-		StepVerifier.create(Flux.zip(obj -> null,
-				Flux.just(1),
-				Flux.just(2)
-				    .hide()))
-		            .verifyError(NullPointerException.class);
-	}
-
-	@Test
-	public void failCombinedNullHideAll() {
-		StepVerifier.create(Flux.zip(obj -> null,
-				Flux.just(1)
-				    .hide(),
-				Flux.just(2)
-				    .hide()))
-		            .verifyError(NullPointerException.class);
-	}
-
-	@Test
-	public void failRequestHideAll() {
-		Flux.zip(obj -> null,
-				Flux.just(1)
-				    .hide(),
-				Flux.just(2)
-				    .hide())
-		    .subscribe(null, null, null, s -> {
-			    s.request(0);
-		    });
-	}
-
-	@Test
-	public void failCombinedFusedError() {
-		StepVerifier.create(Flux.zip(obj -> 0,
-				Flux.just(1, 2, 3)
-				    .doOnNext(d -> {
-					    if (d > 1) {
-						    throw new RuntimeException("test");
-					    }
-				    }),
-				Flux.just(2, 3)), 0)
-		            .thenRequest(1)
-		            .expectNext(0)
-		            .verifyErrorMessage("test");
-	}
-
-	@Test
-	public void backpressuredAsyncFusedCancelled() {
-		UnicastProcessor<Integer> up = UnicastProcessor.create();
-		StepVerifier.create(Flux.zip(obj -> (int) obj[0] + (int) obj[1],
-				1,
-				up,
-				Flux.just(2, 3, 5)), 0)
-		            .then(() -> up.onNext(1))
-		            .thenRequest(1)
-		            .expectNext(3)
-		            .then(() -> up.onNext(2))
-		            .thenRequest(1)
-		            .expectNext(5)
-		            .thenCancel()
-		            .verify();
-	}
-
-	@Test
-	public void backpressuredAsyncFusedCancelled2() {
-		UnicastProcessor<Integer> up = UnicastProcessor.create();
-		StepVerifier.create(Flux.zip(obj -> (int) obj[0] + (int) obj[1],
-				1,
-				up,
-				Flux.just(2, 3, 5)), 0)
-		            .then(() -> up.onNext(1))
-		            .thenRequest(3)
-		            .expectNext(3)
-		            .then(() -> up.onNext(2))
-		            .expectNext(5)
-		            .thenCancel()
-		            .verify();
-	}
-
-	@Test
-	public void backpressuredAsyncFusedError() {
-		Hooks.onErrorDropped(c -> {
-			assertThat(c).hasMessage("test2");
-		});
-		try {
-			UnicastProcessor<Integer> up = UnicastProcessor.create();
-			StepVerifier.create(Flux.zip(obj -> (int) obj[0] + (int) obj[1],
-					1,
-					up,
-					Flux.just(2, 3, 5)), 0)
-			            .then(() -> up.onNext(1))
-			            .thenRequest(1)
-			            .expectNext(3)
-			            .then(() -> up.onNext(2))
-			            .thenRequest(1)
-			            .expectNext(5)
-			            .then(() -> up.actual.onError(new Exception("test")))
-			            .then(() -> up.actual.onError(new Exception("test2")))
-			            .verifyErrorMessage("test");
-		}
-		finally {
-			Hooks.resetOnErrorDropped();
-		}
-	}
-
-	@Test
-	public void backpressuredAsyncFusedComplete() {
-		UnicastProcessor<Integer> up = UnicastProcessor.create();
-		StepVerifier.create(Flux.zip(obj -> (int) obj[0] + (int) obj[1],
-				1,
-				up,
-				Flux.just(2, 3, 5)), 0)
-		            .then(() -> up.onNext(1))
-		            .thenRequest(1)
-		            .expectNext(3)
-		            .then(() -> up.onNext(2))
-		            .thenRequest(1)
-		            .expectNext(5)
-		            .then(() -> up.onComplete())
-		            .verifyComplete();
 	}
 
 	@Test
@@ -804,7 +604,7 @@ public class FluxFlatMapTest {
 		                        .then(d -> Mono.just(d)
 		                                       .hide()))
 		            .consumeSubscriptionWith(s -> {
-			            assertThat(s).isInstanceOf(SuppressFuseableSubscriber.class);
+			            assertThat(s).isInstanceOf(FluxHide.SuppressFuseableSubscriber.class);
 		            })
 		            .expectNext(1)
 		            .verifyComplete();
@@ -816,165 +616,9 @@ public class FluxFlatMapTest {
 		                        .then(d -> Mono.error(new Exception("test"))
 		                                       .hide()))
 		            .consumeSubscriptionWith(s -> {
-			            assertThat(s).isInstanceOf(SuppressFuseableSubscriber.class);
+			            assertThat(s).isInstanceOf(FluxHide.SuppressFuseableSubscriber.class);
 		            })
 		            .verifyErrorMessage("test");
-	}
-
-	@Test
-	public void failCombinedError() {
-		StepVerifier.create(Flux.zip(obj -> {
-			throw new RuntimeException("test");
-		}, 123, Flux.just(1), Flux.just(2), Flux.just(3)))
-		            .verifyErrorMessage("test");
-	}
-
-	@Test
-	public void failCombinedErrorHide() {
-		StepVerifier.create(Flux.zip(obj -> {
-					throw new RuntimeException("test");
-				},
-				123,
-				Flux.just(1)
-				    .hide(),
-				Flux.just(2)
-				    .hide(),
-				Flux.just(3)))
-		            .verifyErrorMessage("test");
-	}
-
-	@Test
-	public void failCombinedErrorHideAll() {
-		StepVerifier.create(Flux.zip(obj -> {
-					throw new RuntimeException("test");
-				},
-				123,
-				Flux.just(1)
-				    .hide(),
-				Flux.just(2)
-				    .hide(),
-				Flux.just(3)
-				    .hide()))
-		            .verifyErrorMessage("test");
-	}
-
-	@Test
-	public void failCallable() {
-		StepVerifier.create(Flux.zip(obj -> 0, Flux.just(1), Mono.fromCallable(() -> {
-			throw new Exception("test");
-		})))
-		            .verifyErrorMessage("test");
-	}
-
-	@Test
-	public void prematureCompleteCallableNull() {
-		StepVerifier.create(Flux.zip(obj -> 0,
-				Flux.just(1),
-				Mono.fromCallable(() -> null)))
-		            .verifyComplete(); //FIXME Should fail ?
-	}
-
-	@Test
-	public void prematureCompleteCallableNullHide() {
-		StepVerifier.create(Flux.zip(obj -> 0,
-				Flux.just(1)
-				    .hide(),
-				Mono.fromCallable(() -> null)))
-		            .verifyComplete(); //FIXME Should fail ?
-	}
-
-	@Test
-	public void prematureCompleteCallableNullHideAll() {
-		StepVerifier.create(Flux.zip(obj -> 0,
-				Flux.just(1)
-				    .hide(),
-				Mono.fromCallable(() -> null)
-				    .hide()))
-		            .verifyError(NullPointerException.class);
-	}
-
-	@Test
-	public void prematureCompleteSourceEmpty() {
-		StepVerifier.create(Flux.zip(obj -> 0,
-				Flux.just(1),
-				Mono.empty()
-				    .hide()))
-		            .verifyComplete();
-	}
-
-	@Test
-	public void prematureCompleteSourceEmptyDouble() {
-		DirectProcessor<Integer> d = DirectProcessor.create();
-		StepVerifier.create(Flux.zip(obj -> 0, d, s -> {
-			Subscriber<?> a =
-					((DirectProcessor.DirectProcessorSubscription) d.downstreams()
-					                                                .next()).actual;
-
-			Operators.complete(s);
-
-			a.onComplete();
-		}, Mono.just(1)))
-		            .verifyComplete();
-	}
-
-	@Test
-	public void prematureCompleteSourceError() {
-		StepVerifier.create(Flux.zip(obj -> 0,
-				Flux.just(1),
-				Mono.error(new Exception("test"))))
-		            .verifyErrorMessage("test");
-	}
-
-	@Test
-	public void prematureCompleteSourceErrorHide() {
-		StepVerifier.create(Flux.zip(obj -> 0,
-				Flux.just(1)
-				    .hide(),
-				Mono.error(new Exception("test"))))
-		            .verifyErrorMessage("test");
-	}
-
-	@Test
-	public void prematureCompleteEmpty() {
-		StepVerifier.create(Flux.zip(obj -> 0))
-		            .verifyComplete();
-	}
-
-	@Test
-	public void prematureCompleteIterableEmpty() {
-		StepVerifier.create(Flux.zip(Arrays.asList(), obj -> 0))
-		            .verifyComplete();
-	}
-
-	@Test
-	public void moreThan8() {
-		StepVerifier.create(Flux.zip(Arrays.asList(Flux.just(1),
-				Flux.just(2),
-				Flux.just(3),
-				Flux.just(4),
-				Flux.just(5),
-				Flux.just(6),
-				Flux.just(7),
-				Flux.just(8),
-				Flux.just(9)),
-				obj -> (int) obj[0] + (int) obj[1] + (int) obj[2] + (int) obj[3] + (int) obj[4] + (int) obj[5] + (int) obj[6] + (int) obj[7] + (int) obj[8]))
-		            .expectNext(45)
-		            .verifyComplete();
-	}
-
-	@Test
-	public void size8LikeInternalBuffer() {
-		StepVerifier.create(Flux.zip(Arrays.asList(Flux.just(1),
-				Flux.just(2),
-				Flux.just(3),
-				Flux.just(4),
-				Flux.just(5),
-				Flux.just(6),
-				Flux.just(7),
-				Flux.just(8)),
-				obj -> (int) obj[0] + (int) obj[1] + (int) obj[2] + (int) obj[3] + (int) obj[4] + (int) obj[5] + (int) obj[6] + (int) obj[7]))
-		            .expectNext(36)
-		            .verifyComplete();
 	}
 
 	@Test
