@@ -26,6 +26,7 @@ import org.junit.Test;
 import org.reactivestreams.Subscriber;
 import reactor.core.Exceptions;
 import reactor.test.StepVerifier;
+import reactor.test.publisher.TestPublisher;
 import reactor.test.subscriber.AssertSubscriber;
 import reactor.util.concurrent.QueueSupplier;
 
@@ -467,7 +468,7 @@ public class FluxFlatMapTest {
 	}
 
 	@Test
-	public void failMap() {
+	public void failScalarMap() {
 		StepVerifier.create(Mono.just(1)
 		                        .flatMap(f -> {
 			                        throw new RuntimeException("test");
@@ -476,14 +477,14 @@ public class FluxFlatMapTest {
 	}
 
 	@Test
-	public void failMapNull() {
+	public void failScalarMapNull() {
 		StepVerifier.create(Mono.just(1)
 		                        .flatMap(f -> null))
 		            .verifyError(NullPointerException.class);
 	}
 
 	@Test
-	public void failMapCallableError() {
+	public void failScalarMapCallableError() {
 		StepVerifier.create(Mono.just(1)
 		                        .flatMap(f -> Mono.fromCallable(() -> {
 			                        throw new Exception("test");
@@ -492,30 +493,53 @@ public class FluxFlatMapTest {
 	}
 
 	@Test
-	public void prematureMapCallableNullComplete() {
+	public void prematureScalarMapCallableNullComplete() {
 		StepVerifier.create(Mono.just(1)
 		                        .flatMap(f -> Mono.fromCallable(() -> null)))
 		            .verifyComplete();
 	}
 
 	@Test
-	public void prematureCompleteIterableCallableNull() {
-		StepVerifier.create(Flux.zip(Arrays.asList(Flux.just(1),
-				Mono.fromCallable(() -> null)), obj -> 0))
-		            .verifyComplete(); //FIXME Should fail ?
+	public void prematureScalarMapCallableJust() {
+		StepVerifier.create(Mono.just(1)
+		                        .flatMap(f -> Mono.fromCallable(() -> 2)))
+		            .expectNext(2)
+		            .verifyComplete();
+	}
+
+	@Test
+	public void prematureCancel() {
+		StepVerifier.create(Flux.just(1, 2, 3)
+		                        .flatMap(Flux::just))
+		            .expectNext(1, 2, 3)
+		            .thenCancel()
+		            .verify();
+	}
+
+	@Test
+	public void prematureCancel2() {
+		StepVerifier.create(Flux.just(1, 2, 3)
+		                        .flatMap(Flux::just))
+		            .thenCancel()
+		            .verify();
 	}
 
 	@Test //FIXME use Violation.NO_CLEANUP_ON_TERMINATE
-	public void failDoubleNext() {
+	public void failNextOnTerminated() {
+		UnicastProcessor<Integer> up = UnicastProcessor.create();
+
 		Hooks.onNextDropped(c -> {
+			assertThat(c).isEqualTo(2);
 		});
-		StepVerifier.create(Flux.zip(obj -> 0, Flux.just(1), Flux.just(2), s -> {
-			s.onSubscribe(Operators.emptySubscription());
-			s.onNext(2);
-			s.onNext(3);
-		}))
-		            .thenCancel()
-		            .verify();
+		StepVerifier.create(up.flatMap(Flux::just))
+		            .then(() -> {
+			            up.onNext(1);
+			            Subscriber<? super Integer> a = up.actual;
+			            up.onComplete();
+			            a.onNext(2);
+		            })
+		            .expectNext(1)
+					.verifyComplete();
 		Hooks.resetOnNextDropped();
 	}
 
@@ -772,6 +796,29 @@ public class FluxFlatMapTest {
 		            .expectNext(5)
 		            .then(() -> up.onComplete())
 		            .verifyComplete();
+	}
+
+	@Test
+	public void suppressFusionIfExpected() {
+		StepVerifier.create(Mono.just(1)
+		                        .then(d -> Mono.just(d)
+		                                       .hide()))
+		            .consumeSubscriptionWith(s -> {
+			            assertThat(s).isInstanceOf(SuppressFuseableSubscriber.class);
+		            })
+		            .expectNext(1)
+		            .verifyComplete();
+	}
+
+	@Test
+	public void suppressFusionIfExpectedError() {
+		StepVerifier.create(Mono.just(1)
+		                        .then(d -> Mono.error(new Exception("test"))
+		                                       .hide()))
+		            .consumeSubscriptionWith(s -> {
+			            assertThat(s).isInstanceOf(SuppressFuseableSubscriber.class);
+		            })
+		            .verifyErrorMessage("test");
 	}
 
 	@Test

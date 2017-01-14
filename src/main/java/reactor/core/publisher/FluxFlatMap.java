@@ -405,24 +405,7 @@ final class FluxFlatMap<T, R> extends FluxSource<T, R> {
 					}
 				}
 				else {
-					Queue<R> q;
-
-					try {
-						q = getOrCreateScalarQueue();
-					}
-					catch (Throwable ex) {
-						ex = Operators.onOperatorError(s, ex, v);
-
-						if (Exceptions.addThrowable(ERROR, this, ex)) {
-							done = true;
-						}
-						else {
-							Operators.onErrorDropped(ex);
-						}
-
-						drainLoop();
-						return;
-					}
+					Queue<R> q = getOrCreateScalarQueue();
 
 					if (!q.offer(v)) {
 						s.cancel();
@@ -448,22 +431,7 @@ final class FluxFlatMap<T, R> extends FluxSource<T, R> {
 			else {
 				Queue<R> q;
 
-				try {
-					q = getOrCreateScalarQueue();
-				}
-				catch (Throwable ex) {
-					ex = Operators.onOperatorError(s, ex, v);
-
-					if (Exceptions.addThrowable(ERROR, this, ex)) {
-						done = true;
-					}
-					else {
-						Operators.onErrorDropped(ex);
-					}
-
-					drain();
-					return;
-				}
+				q = getOrCreateScalarQueue();
 
 				if (!q.offer(v)) {
 					s.cancel();
@@ -815,22 +783,7 @@ final class FluxFlatMap<T, R> extends FluxSource<T, R> {
 					inner.request(1);
 				}
 				else {
-					Queue<R> q;
-
-					try {
-						q = getOrCreateScalarQueue(inner);
-					}
-					catch (Throwable ex) {
-						ex = Operators.onOperatorError(inner, ex, v);
-						if (Exceptions.addThrowable(ERROR, this, ex)) {
-							inner.done = true;
-						}
-						else {
-							Operators.onErrorDropped(ex);
-						}
-						drainLoop();
-						return;
-					}
+					Queue<R> q = getOrCreateScalarQueue(inner);
 
 					if (!q.offer(v)) {
 						inner.cancel();
@@ -856,22 +809,7 @@ final class FluxFlatMap<T, R> extends FluxSource<T, R> {
 				drainLoop();
 			}
 			else {
-				Queue<R> q;
-
-				try {
-					q = getOrCreateScalarQueue(inner);
-				}
-				catch (Throwable ex) {
-					ex = Operators.onOperatorError(inner, ex, v);
-					if (Exceptions.addThrowable(ERROR, this, ex)) {
-						inner.done = true;
-					}
-					else {
-						Operators.onErrorDropped(ex);
-					}
-					drain();
-					return;
-				}
+				Queue<R> q = getOrCreateScalarQueue(inner);
 
 				if (!q.offer(v)) {
 					Throwable e = Operators.onOperatorError(inner,
