@@ -535,6 +535,13 @@ public class FluxFlatMapTest {
 	}
 
 	@Test
+	public void prematureCompleteMaxPrefetch() {
+		StepVerifier.create(Flux.just(1, 2, 3)
+		                        .flatMap(f -> Flux.empty(), Integer.MAX_VALUE))
+		            .verifyComplete();
+	}
+
+	@Test
 	public void prematureCancel() {
 		StepVerifier.create(Flux.just(1, 2, 3)
 		                        .flatMap(Flux::just))
@@ -575,6 +582,27 @@ public class FluxFlatMapTest {
 		StepVerifier.create(Flux.from(s -> {
 			s.onSubscribe(Operators.emptySubscription());
 			s.onComplete();
+			s.onComplete();
+		}).flatMap(Flux::just))
+		            .verifyComplete();
+	}
+
+
+	@Test
+	public void ignoreConcurrentHiddenComplete() {
+		StepVerifier.create(Flux.from(s -> {
+			s.onSubscribe(Operators.emptySubscription());
+			s.onNext(1);
+		}).flatMap(f -> Flux.just(f).hide()))
+		            .thenCancel()
+		            .verify();
+	}
+
+	@Test
+	public void ignoreDoubleOnSubscribe() {
+		StepVerifier.create(Flux.from(s -> {
+			s.onSubscribe(Operators.emptySubscription());
+			s.onSubscribe(Operators.emptySubscription());
 			s.onComplete();
 		}).flatMap(Flux::just))
 		            .verifyComplete();
@@ -732,6 +760,15 @@ public class FluxFlatMapTest {
 			            assertThat(s).isInstanceOf(FluxHide.SuppressFuseableSubscriber.class);
 		            })
 		            .verifyErrorMessage("test");
+	}
+
+	@Test
+	public void backpressuredScalarThenCancel(){
+		StepVerifier.create(Flux.just(1, 2, 3).flatMap(Flux::just), 0)
+	                .thenRequest(2)
+	                .expectNext(1, 2)
+	                .thenCancel()
+	                .verify();
 	}
 
 	@Test

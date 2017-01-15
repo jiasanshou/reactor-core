@@ -615,20 +615,7 @@ final class FluxFlatMap<T, R> extends FluxSource<T, R> {
 
 								if (e == r) {
 									d = inner.done;
-									boolean empty;
-
-									try {
-										empty = q.isEmpty();
-									}
-									catch (Throwable ex) {
-										ex = Operators.onOperatorError(inner, ex);
-										if (!Exceptions.addThrowable(ERROR, this, ex)) {
-											Operators.onErrorDropped(ex);
-										}
-										empty = true;
-										d = true;
-									}
-
+									boolean empty = q.isEmpty();
 									if (d && empty) {
 										remove(inner.index);
 										again = true;
