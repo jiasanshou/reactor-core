@@ -383,6 +383,7 @@ final class FluxFlatMap<T, R> extends FluxSource<T, R> {
 				}
 				return;
 			}
+
 			if (wip == 0 && WIP.compareAndSet(this, 0, 1)) {
 				long r = requested;
 
